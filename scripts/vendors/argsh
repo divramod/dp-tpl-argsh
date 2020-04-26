@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC1090
+set -eu -o pipefail
+
+[ -f "${1:-}" ] || {
+  echo "Help is comming. 🤕"
+  exit 1
+}
+
+ARGSH_READLINK='true'
+if command -v 'greadlink' >/dev/null; then
+  ARGSH_READLINK='greadlink'
+elif command -v 'readlink' >/dev/null; then
+  ARGSH_READLINK='readlink'
+fi
+
+_argsh_resolve_absolute_root_dir() {
+  local -r cwd="${PWD}"
+  local -r result="${2}"
+  local -r original_shell_options="${-}"
+  local path="${1}"
+  local target_dir
+  local target_name
+
+  # Resolve the parent directory, e.g. /bin => /usr/bin on CentOS (https://github.com/bats-core/bats-core/issues/113).
+  set -P
+
+  while true; do
+    target_dir="${path%/*}"
+    target_name="${path##*/}"
+
+    if [[ "${target_dir}" != "${path}" ]]; then
+      cd "${target_dir}"
+    fi
+
+    if [[ -L "${target_name}" ]]; then
+      path="$("${ARGSH_READLINK}" "${target_name}")"
+    else
+      printf -v "${result}" -- '%s' "${PWD%/*}"
+      set +P "-${original_shell_options}"
+      cd "${cwd}"
+      return
+    fi
+  done
+}
+
+export ARGSH_ROOT
+_argsh_resolve_absolute_root_dir "${0}" 'ARGSH_ROOT'
+export ARGSH_SHELL
+ARGSH_SHELL="bash"
+export ARGSH_SOURCE
+ARGSH_SOURCE="${1}"
+export ARGSH_ROOT_SOURCE
+ARGSH_ROOT_SOURCE="$(realpath "$(dirname "${ARGSH_SOURCE}")")"
+
+export ARGSH_LIBEXEC="${ARGSH_ROOT}/libexec/argsh"
+source "${ARGSH_LIBEXEC}/arg.sh"
+source "${ARGSH_LIBEXEC}/validator.sh"
+
+args=("${@}")
+
+while IFS= read -r setting; do case "${setting}" in
+  shell=*)
+    ARGSH_SHELL="${setting:6}"
+    command -v "${ARGSH_SHELL}" &>/dev/null || {
+      echo "wanted argsh shell not found: ${ARGSH_SHELL}" >&2
+      exit 1
+    }
+  ;;
+  source=*)
+    path="$(realpath "${ARGSH_ROOT_SOURCE}/${setting:7}")"
+    [ -f "${path}" ] || {
+      echo "source path does not exist: ${path}" >&2
+      exit 1
+    }
+    source "${path}"
+  ;;
+  pass=*)
+    case "${setting:5}" in
+    "file") args=("${1}") ;;
+    "args") args=("${@:2}") ;;
+    "none") args=() ;;
+    esac
+  ;;
+esac; done < <(_argsh_settings "${ARGSH_SOURCE}")
+
+# remove first argument (script path)
+_argsh "${@:2}"
+exec "${ARGSH_SHELL}" "${args[@]}"

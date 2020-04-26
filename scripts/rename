@@ -1,0 +1,33 @@
+#!/usr/bin/env argsh
+set -eu -o pipefail
+
+# OPTIONS
+# argsh(t|test-option): env(TEST_OPTION) def(false) des(A test option.) val()
+
+# ACTIONS
+
+# PATHS
+
+# VARIABLES
+
+# IMPORTS
+
+# MAIN
+main() {
+  # dependencies
+
+  # actions
+  for ACTION in ${ARGSH_ACTIONS}; do case "${ACTION}" in
+    T|test-action)  test_action ;;
+  esac; done
+}
+
+# FUNCTIONS
+test_action() {
+  echo "$TEST_OPTION"
+}
+
+# VALIDATORS
+
+# RUN
+[[ "${0}" != "${BASH_SOURCE[0]}" ]] || main "${@}"
